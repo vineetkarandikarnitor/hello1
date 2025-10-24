@@ -1,0 +1,50 @@
+name: OIDC PoC - Create PR and Trigger Workflow
+
+on:
+  workflow_dispatch:  # Allows you to manually trigger this workflow
+
+permissions:
+  id-token: write        # Necessary to request OIDC token from GitHub
+  contents: read         # Optional: needed to read repository contents if modifying
+
+jobs:
+  create-pr:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4  # Check out the repository so we can modify it
+
+      - name: Get OIDC Token
+        id: get-oidc
+        run: |
+          echo "Requesting OIDC token"
+          TOKEN_RESPONSE=$(curl -s -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL?audience=https://example.com")
+          echo "Raw response: $TOKEN_RESPONSE"
+          TOKEN=$(echo "$TOKEN_RESPONSE" | jq -r '.value')
+          echo "TOKEN=$TOKEN" >> $GITHUB_ENV
+          echo "Partial Token: ${TOKEN:0:100}..."
+
+      - name: Create GitHub App Installation Token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.APP_ID }}               # Your GitHub App ID
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}   # Your GitHub App private key
+
+      - name: Commit a change and create a PR
+        run: |
+          echo "Making a change to the repo"
+          echo "OIDC PR Change $(date)" >> example.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b oidc-change-branch
+          git add example.txt
+          git commit -m "OIDC PoC: Update example.txt"
+          git push https://x-access-token:${{ steps.app-token.outputs.token }}@github.com/demo-org-oidc-3/test-org-oidc-3.git HEAD:oidc-change-branch
+          
+      - name: Create Pull Request in Target Repo
+        run: |
+          echo "Creating a PR in the target repo"
+          gh pr create --repo demo-org-oidc-3/test-org-oidc-3 --title "OIDC PR Example" --body "Created using OIDC token" --head oidc-change-branch --base main
