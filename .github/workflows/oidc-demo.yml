@@ -42,11 +42,11 @@ jobs:
           APP_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           cd target
-          git checkout -b oidc-change-branch
+          git checkout -b oidc-change-branch-2
           echo "OIDC PR Change $(date)" >> example.txt
           git add example.txt
           git commit -m "OIDC PoC: Update example.txt"
-          git push origin oidc-change-branch
+          git push origin oidc-change-branch-2
 
       - name: Open PR on target repo
         env:
@@ -56,5 +56,5 @@ jobs:
             --repo demo-org-oidc-3/test-org-oidc-3 \
             --title "OIDC PoC PR" \
             --body "Created from cross-org OIDC flow (inside target clone)" \
-            --head oidc-change-branch \
+            --head oidc-change-branch-2 \
             --base main
