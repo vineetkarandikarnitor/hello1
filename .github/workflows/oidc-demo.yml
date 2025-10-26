@@ -1,50 +1,64 @@
-name: OIDC PoC - Create PR and Trigger Workflow
+name: OIDC PoC - Cross-org PR
 
 on:
-  workflow_dispatch:  # Allows you to manually trigger this workflow
+  workflow_dispatch:
 
 permissions:
-  id-token: write        # Necessary to request OIDC token from GitHub
-  contents: read         # Optional: needed to read repository contents if modifying
+  id-token: write
+  contents: read   # for this repo's read; pushes use the app token below
 
 jobs:
-  create-pr:
+  pr:
     runs-on: ubuntu-latest
-    
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4  # Check out the repository so we can modify it
+      - name: Checkout (no default creds)
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
-      - name: Get OIDC Token
-        id: get-oidc
-        run: |
-          echo "Requesting OIDC token"
-          TOKEN_RESPONSE=$(curl -s -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
-            "$ACTIONS_ID_TOKEN_REQUEST_URL?audience=https://example.com")
-          echo "Raw response: $TOKEN_RESPONSE"
-          TOKEN=$(echo "$TOKEN_RESPONSE" | jq -r '.value')
-          echo "TOKEN=$TOKEN" >> $GITHUB_ENV
-          echo "Partial Token: ${TOKEN:0:100}..."
-
-      - name: Create GitHub App Installation Token
+      # Create an INSTALLATION TOKEN for your GitHub App,
+      # explicitly scoped to the TARGET org/repo
+      - name: Create GitHub App installation token (target org/repo)
         id: app-token
         uses: actions/create-github-app-token@v1
         with:
-          app-id: ${{ secrets.APP_ID }}               # Your GitHub App ID
-          private-key: ${{ secrets.APP_PRIVATE_KEY }}   # Your GitHub App private key
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          owner: demo-org-oidc-3
+          repositories: test-org-oidc-3
+          # If your installation is "All repositories", you can omit `repositories`
 
-      - name: Commit a change and create a PR
+      # Optional: sanity-check what repos this token can see
+      - name: (Optional) List repos visible to installation token
+        env:
+          APP_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
-          echo "Making a change to the repo"
+          curl -sS -H "Authorization: Bearer $APP_TOKEN" -H "Accept: application/vnd.github+json" \
+            https://api.github.com/installation/repositories | jq -r '.repositories[].full_name' | sed -n '1,50p'
+
+      - name: Make a change
+        run: |
           echo "OIDC PR Change $(date)" >> example.txt
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-app[bot]"
+          git config user.email "github-app[bot]@users.noreply.github.com"
           git checkout -b oidc-change-branch
           git add example.txt
           git commit -m "OIDC PoC: Update example.txt"
-          git push https://x-access-token:${{ steps.app-token.outputs.token }}@github.com/demo-org-oidc-3/test-org-oidc-3.git HEAD:oidc-change-branch
-          
-      - name: Create Pull Request in Target Repo
+
+      - name: Push branch to target repo (via app token)
+        env:
+          APP_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
-          echo "Creating a PR in the target repo"
-          gh pr create --repo demo-org-oidc-3/test-org-oidc-3 --title "OIDC PR Example" --body "Created using OIDC token" --head oidc-change-branch --base main
+          git push https://x-access-token:${APP_TOKEN}@github.com/demo-org-oidc-3/test-org-oidc-3.git \
+            HEAD:oidc-change-branch
+
+      - name: Open PR on target repo
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          gh pr create \
+            --repo demo-org-oidc-3/test-org-oidc-3 \
+            --title "OIDC PoC PR" \
+            --body "Created from cross-org OIDC flow" \
+            --head oidc-change-branch \
+            --base main
