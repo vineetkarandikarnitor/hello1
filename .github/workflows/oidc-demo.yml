@@ -1,11 +1,11 @@
-name: OIDC PoC - Cross-org PR
+name: OIDC PoC - Cross-org PR (safe push)
 
 on:
   workflow_dispatch:
 
 permissions:
   id-token: write
-  contents: read   # for this repo's read; pushes use the app token below
+  contents: read
 
 jobs:
   pr:
@@ -16,8 +16,6 @@ jobs:
         with:
           persist-credentials: false
 
-      # Create an INSTALLATION TOKEN for your GitHub App,
-      # explicitly scoped to the TARGET org/repo
       - name: Create GitHub App installation token (target org/repo)
         id: app-token
         uses: actions/create-github-app-token@v1
@@ -26,31 +24,29 @@ jobs:
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
           owner: demo-org-oidc-3
           repositories: test-org-oidc-3
-          # If your installation is "All repositories", you can omit `repositories`
 
-      # Optional: sanity-check what repos this token can see
-      - name: (Optional) List repos visible to installation token
+      # Clone the TARGET repo with the app token (so histories align)
+      - name: Clone target repo (shallow)
         env:
           APP_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
-          curl -sS -H "Authorization: Bearer $APP_TOKEN" -H "Accept: application/vnd.github+json" \
-            https://api.github.com/installation/repositories | jq -r '.repositories[].full_name' | sed -n '1,50p'
-
-      - name: Make a change
-        run: |
-          echo "OIDC PR Change $(date)" >> example.txt
+          git clone --depth 1 \
+            https://x-access-token:${APP_TOKEN}@github.com/demo-org-oidc-3/test-org-oidc-3.git target
+          cd target
           git config user.name "github-app[bot]"
           git config user.email "github-app[bot]@users.noreply.github.com"
-          git checkout -b oidc-change-branch
-          git add example.txt
-          git commit -m "OIDC PoC: Update example.txt"
 
-      - name: Push branch to target repo (via app token)
+      # Make your change INSIDE the target repo clone
+      - name: Create branch and commit inside target repo
         env:
           APP_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
-          git push https://x-access-token:${APP_TOKEN}@github.com/demo-org-oidc-3/test-org-oidc-3.git \
-            HEAD:oidc-change-branch
+          cd target
+          git checkout -b oidc-change-branch
+          echo "OIDC PR Change $(date)" >> example.txt
+          git add example.txt
+          git commit -m "OIDC PoC: Update example.txt"
+          git push origin oidc-change-branch
 
       - name: Open PR on target repo
         env:
@@ -59,6 +55,6 @@ jobs:
           gh pr create \
             --repo demo-org-oidc-3/test-org-oidc-3 \
             --title "OIDC PoC PR" \
-            --body "Created from cross-org OIDC flow" \
+            --body "Created from cross-org OIDC flow (inside target clone)" \
             --head oidc-change-branch \
             --base main
