@@ -25,6 +25,8 @@ jobs:
           owner: demo-org-oidc-3
           repositories: test-org-oidc-3
 
+
+
       # Clone the TARGET repo with the app token (so histories align)
       - name: Clone target repo (shallow)
         env:
@@ -42,19 +44,70 @@ jobs:
           APP_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           cd target
-          git checkout -b oidc-change-branch-2
+
+          # 1) Build a safe author identity from the workflow trigger
+          ACTOR="${{ github.actor }}"
+          ACTOR_ID="${{ github.actor_id }}"
+          AUTHOR_EMAIL="${ACTOR}@users.noreply.github.com"
+
+          # 2) Set the committer to your App bot (adjust SLUG if needed)
+          APP_BOT_SLUG="Builder-Studio-Config-Manager"   # e.g., my-ci-app
+          COMMITTER_NAME="${APP_BOT_SLUG}[bot]"
+          COMMITTER_EMAIL="${APP_BOT_SLUG}[bot]@users.noreply.github.com"
+
+          # 3) Make change
+          git checkout -b oidc-change-branch-3
           echo "OIDC PR Change $(date)" >> example.txt
           git add example.txt
-          git commit -m "OIDC PoC: Update example.txt"
-          git push origin oidc-change-branch-2
 
-      - name: Open PR on target repo
-        env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
-        run: |
-          gh pr create \
-            --repo demo-org-oidc-3/test-org-oidc-3 \
-            --title "OIDC PoC PR" \
-            --body "Created from cross-org OIDC flow (inside target clone)" \
-            --head oidc-change-branch-2 \
-            --base main
+          # 4) Commit with:
+          #    - Author: the human who triggered the run
+          #    - Committer: your App bot
+          GIT_AUTHOR_NAME="$ACTOR" \
+          GIT_AUTHOR_EMAIL="$AUTHOR_EMAIL" \
+          GIT_COMMITTER_NAME="$COMMITTER_NAME" \
+          GIT_COMMITTER_EMAIL="$COMMITTER_EMAIL" \
+          git commit -m "OIDC PoC: Update example.txt
+          
+          Co-authored-by: ${ACTOR} <${AUTHOR_EMAIL}>
+          Co-authored-by: ${COMMITTER_NAME} <${COMMITTER_EMAIL}>"
+
+          # 5) Push
+          git push origin oidc-change-branch-3
+
+
+
+          # Clone the TARGET repo with the app token (so histories align)
+      # - name: Clone target repo (shallow)
+      #   env:
+      #     APP_TOKEN: ${{ steps.app-token.outputs.token }}
+      #   run: |
+      #     git clone --depth 1 \
+      #       https://x-access-token:${APP_TOKEN}@github.com/demo-org-oidc-3/test-org-oidc-3.git target
+      #     cd target
+      #     git config user.name "github-app[bot]"
+      #     git config user.email "github-app[bot]@users.noreply.github.com"
+
+      # # Make your change INSIDE the target repo clone
+      # - name: Create branch and commit inside target repo
+      #   env:
+      #     APP_TOKEN: ${{ steps.app-token.outputs.token }}
+      #   run: |
+      #     cd target
+      #     git checkout -b oidc-change-branch-3
+      #     echo "OIDC PR Change $(date)" >> example.txt
+      #     git add example.txt
+      #     git commit -m "OIDC PoC: Update example.txt"
+      #     git push origin oidc-change-branch-3
+
+      # - name: Open PR on target repo
+      #   env:
+      #     GH_TOKEN: ${{ steps.app-token.outputs.token }}
+      #   run: |
+      #     gh pr create \
+      #       --repo demo-org-oidc-3/test-org-oidc-3 \
+      #       --title "OIDC PoC PR" \
+      #       --body "Created from cross-org OIDC flow (inside target clone)" \
+      #       --head oidc-change-branch-3 \
+      #       --base main
+
