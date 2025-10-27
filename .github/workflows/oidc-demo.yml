@@ -56,13 +56,11 @@ jobs:
           COMMITTER_EMAIL="${APP_BOT_SLUG}[bot]@users.noreply.github.com"
 
           # 3) Make change
-          git checkout -b oidc-change-branch-3
+          git checkout -b oidc-approach
           echo "OIDC PR Change $(date)" >> example.txt
           git add example.txt
 
           # 4) Commit with:
-          #    - Author: the human who triggered the run
-          #    - Committer: your App bot
           GIT_AUTHOR_NAME="$ACTOR" \
           GIT_AUTHOR_EMAIL="$AUTHOR_EMAIL" \
           GIT_COMMITTER_NAME="$COMMITTER_NAME" \
@@ -73,41 +71,5 @@ jobs:
           Co-authored-by: ${COMMITTER_NAME} <${COMMITTER_EMAIL}>"
 
           # 5) Push
-          git push origin oidc-change-branch-3
-
-
-
-          # Clone the TARGET repo with the app token (so histories align)
-      # - name: Clone target repo (shallow)
-      #   env:
-      #     APP_TOKEN: ${{ steps.app-token.outputs.token }}
-      #   run: |
-      #     git clone --depth 1 \
-      #       https://x-access-token:${APP_TOKEN}@github.com/demo-org-oidc-3/test-org-oidc-3.git target
-      #     cd target
-      #     git config user.name "github-app[bot]"
-      #     git config user.email "github-app[bot]@users.noreply.github.com"
-
-      # # Make your change INSIDE the target repo clone
-      # - name: Create branch and commit inside target repo
-      #   env:
-      #     APP_TOKEN: ${{ steps.app-token.outputs.token }}
-      #   run: |
-      #     cd target
-      #     git checkout -b oidc-change-branch-3
-      #     echo "OIDC PR Change $(date)" >> example.txt
-      #     git add example.txt
-      #     git commit -m "OIDC PoC: Update example.txt"
-      #     git push origin oidc-change-branch-3
-
-      # - name: Open PR on target repo
-      #   env:
-      #     GH_TOKEN: ${{ steps.app-token.outputs.token }}
-      #   run: |
-      #     gh pr create \
-      #       --repo demo-org-oidc-3/test-org-oidc-3 \
-      #       --title "OIDC PoC PR" \
-      #       --body "Created from cross-org OIDC flow (inside target clone)" \
-      #       --head oidc-change-branch-3 \
-      #       --base main
+          git push origin oidc-approach
 
