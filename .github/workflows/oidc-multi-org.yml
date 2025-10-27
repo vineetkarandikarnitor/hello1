@@ -74,7 +74,7 @@ jobs:
         run: |
           set -euo pipefail
       
-          EXPECTED_AUD="https://control-run"   # your chosen audience string
+          EXPECTED_AUD="https://vineetkarandikarnitor/hello1"   # your chosen audience string
       
           # IMPORTANT: use &audience= (not ?audience=)
           RESP=$(curl -sS -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
@@ -106,7 +106,7 @@ jobs:
           [ "$MATCHED" = "yes" ] || { echo "Unexpected audience (got $AUD_JSON), expected $EXPECTED_AUD"; exit 1; }
       
           # Optional: lock to your control repo
-          EXPECTED_REPO="your-control-org/your-control-repo"
+          EXPECTED_REPO="vineetkarandikarnitor/hello1"
           if [ "$REPO" != "$EXPECTED_REPO" ]; then
             echo "This workflow must run from $EXPECTED_REPO (got $REPO)"; exit 1
           fi
