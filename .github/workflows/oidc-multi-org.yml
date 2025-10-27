@@ -1,0 +1,132 @@
+name: Multi-Org PR via GitHub App (with OIDC guard, no backend)
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch_name:
+        description: "Feature branch to create"
+        required: true
+        default: "app-pr-test"
+      base_branch:
+        description: "Base branch for PR"
+        required: true
+        default: "main"
+
+permissions:
+  id-token: write     # <-- OIDC issuance for identity checks
+  contents: read
+
+jobs:
+  open_prs:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        target:
+          - { owner: "demo-org-oidc-3", repo: "test-org-oidc-3" }
+          - { owner: "demo-org-oidc-2", repo: "test-org-oidc-2" }
+          - { owner: "demo-org-oidc-1", repo: "test-org-oidc-1" }
+
+    steps:
+      - name: Checkout control repo
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      # --- OIDC: request a JWT and verify basic claims (no backend) ---
+      - name: Request OIDC token and validate claims
+        id: oidc
+        run: |
+          set -euo pipefail
+          AUD="https://control-run"  # arbitrary but consistent audience
+          RESP=$(curl -sS -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+                 "$ACTIONS_ID_TOKEN_REQUEST_URL?audience=${AUD}")
+          TOKEN=$(echo "$RESP" | jq -r '.value')
+          if [ -z "${TOKEN}" ] || [ "${TOKEN}" = "null" ]; then
+            echo "Failed to obtain OIDC token"; exit 1
+          fi
+
+          # Decode payload (no signature verification here—just a sanity check)
+          PAYLOAD=$(echo "$TOKEN" | cut -d '.' -f2 | base64 -d 2>/dev/null || true)
+          echo "OIDC payload (truncated):"
+          echo "$PAYLOAD" | jq '{iss, aud, sub, repository, ref, actor}' || true
+
+          # Basic guards: issuer + audience + control-repo owner
+          ISS=$(echo "$PAYLOAD" | jq -r '.iss')
+          AUD=$(echo "$PAYLOAD" | jq -r '.aud')
+          SUB=$(echo "$PAYLOAD" | jq -r '.sub')
+          REPO=$(echo "$PAYLOAD" | jq -r '.repository')
+
+          test "$ISS" = "https://token.actions.githubusercontent.com" || { echo "Bad issuer: $ISS"; exit 1; }
+          [[ "$AUD" == "https://control-run" ]] || { echo "Unexpected audience: $AUD"; exit 1; }
+
+          # Ensure this job is running from the expected control repo (optional hardening)
+          # e.g., require it runs from 'your-control-org/your-control-repo'
+          EXPECTED_REPO="your-control-org/your-control-repo"
+          if [ "$REPO" != "$EXPECTED_REPO" ]; then
+            echo "This workflow must run from $EXPECTED_REPO (got $REPO)"; exit 1;
+          fi
+
+          echo "OIDC_OK=true" >> $GITHUB_OUTPUT
+
+      # --- Proceed only if OIDC guard passed ---
+      - name: Create GitHub App installation token (scoped)
+        if: steps.oidc.outputs.OIDC_OK == 'true'
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          owner: ${{ matrix.target.owner }}
+          repositories: ${{ matrix.target.repo }}
+
+      - name: List repos visible to installation token (optional)
+        if: steps.oidc.outputs.OIDC_OK == 'true'
+        env:
+          APP_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          curl -sS -H "Authorization: Bearer $APP_TOKEN" \
+               -H "Accept: application/vnd.github+json" \
+               https://api.github.com/installation/repositories \
+          | jq -r '.repositories[].full_name' | sed -n '1,50p'
+
+      - name: Clone target repo
+        if: steps.oidc.outputs.OIDC_OK == 'true'
+        env:
+          APP_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          git clone --depth 1 \
+            "https://x-access-token:${APP_TOKEN}@github.com/${{ matrix.target.owner }}/${{ matrix.target.repo }}.git" target
+          cd target
+          git config user.name  "your-app-slug[bot]"
+          git config user.email "your-app-slug[bot]@users.noreply.github.com"
+
+      - name: Create change, branch, and push
+        if: steps.oidc.outputs.OIDC_OK == 'true'
+        env:
+          BRANCH: ${{ github.event.inputs.branch_name }}
+        run: |
+          cd target
+          git checkout -b "$BRANCH"
+          echo "Automated change $(date)" >> example.txt
+          ACTOR="${{ github.actor }}"
+          AID="${{ github.actor_id }}"
+          AUTHOR_EMAIL="${AID}+${ACTOR}@users.noreply.github.com"
+          GIT_AUTHOR_NAME="$ACTOR" \
+          GIT_AUTHOR_EMAIL="$AUTHOR_EMAIL" \
+          GIT_COMMITTER_NAME="your-app-slug[bot]" \
+          GIT_COMMITTER_EMAIL="your-app-slug[bot]@users.noreply.github.com" \
+          git add example.txt && git commit -m "App-only test change (OIDC-guarded)"
+          git push origin "$BRANCH"
+
+      - name: Open PR
+        if: steps.oidc.outputs.OIDC_OK == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          gh pr create \
+            --repo "${{ matrix.target.owner }}/${{ matrix.target.repo }}" \
+            --title "App-only cross-org PR (OIDC-guarded)" \
+            --body  "Opened via GitHub App installation token after OIDC identity checks." \
+            --head  "${{ github.event.inputs.branch_name }}" \
+            --base  "${{ github.event.inputs.base_branch }}"
