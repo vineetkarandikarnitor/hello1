@@ -33,42 +33,6 @@ jobs:
         with:
           persist-credentials: false
 
-      # --- OIDC: request a JWT and verify basic claims (no backend) ---
-      # - name: Request OIDC token and validate claims
-      #   id: oidc
-      #   run: |
-      #     set -euo pipefail
-      #     AUD="https://control-run"  # arbitrary but consistent audience
-      #     RESP=$(curl -sS -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
-      #            "$ACTIONS_ID_TOKEN_REQUEST_URL?audience=${AUD}")
-      #     TOKEN=$(echo "$RESP" | jq -r '.value')
-      #     if [ -z "${TOKEN}" ] || [ "${TOKEN}" = "null" ]; then
-      #       echo "Failed to obtain OIDC token"; exit 1
-      #     fi
-
-      #     # Decode payload (no signature verification here—just a sanity check)
-      #     PAYLOAD=$(echo "$TOKEN" | cut -d '.' -f2 | base64 -d 2>/dev/null || true)
-      #     echo "OIDC payload (truncated):"
-      #     echo "$PAYLOAD" | jq '{iss, aud, sub, repository, ref, actor}' || true
-
-      #     # Basic guards: issuer + audience + control-repo owner
-      #     ISS=$(echo "$PAYLOAD" | jq -r '.iss')
-      #     AUD=$(echo "$PAYLOAD" | jq -r '.aud')
-      #     SUB=$(echo "$PAYLOAD" | jq -r '.sub')
-      #     REPO=$(echo "$PAYLOAD" | jq -r '.repository')
-
-      #     test "$ISS" = "https://token.actions.githubusercontent.com" || { echo "Bad issuer: $ISS"; exit 1; }
-      #     [[ "$AUD" == "https://control-run" ]] || { echo "Unexpected audience: $AUD"; exit 1; }
-
-      #     # Ensure this job is running from the expected control repo (optional hardening)
-      #     # e.g., require it runs from 'your-control-org/your-control-repo'
-      #     EXPECTED_REPO="your-control-org/your-control-repo"
-      #     if [ "$REPO" != "$EXPECTED_REPO" ]; then
-      #       echo "This workflow must run from $EXPECTED_REPO (got $REPO)"; exit 1;
-      #     fi
-
-      #     echo "OIDC_OK=true" >> $GITHUB_OUTPUT
-
       - name: Request OIDC token and validate claims
         id: oidc
         run: |
