@@ -56,7 +56,7 @@ jobs:
           COMMITTER_EMAIL="${APP_BOT_SLUG}[bot]@users.noreply.github.com"
 
           # 3) Make change
-          git checkout -b oidc-approach
+          git checkout -b test-oidc-approach
           echo "OIDC PR Change $(date)" >> example.txt
           git add example.txt
 
@@ -71,5 +71,5 @@ jobs:
           Co-authored-by: ${COMMITTER_NAME} <${COMMITTER_EMAIL}>"
 
           # 5) Push
-          git push origin oidc-approach
+          git push origin test-oidc-approach
 
